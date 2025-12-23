@@ -1,3 +1,6 @@
+#ifdef CLANGD
+#include <__clang_cuda_builtin_vars.h>
+#endif
 #include <libgpu/context.h>
 #include <libgpu/work_size.h>
 #include <libgpu/shared_device_buffer.h>
@@ -15,7 +18,29 @@ __global__ void matrix_multiply_via_local_memory(
                        unsigned int h,
                        unsigned int k)
 {
-    // TODO
+    const unsigned int i = blockIdx.x * blockDim.x + threadIdx.x; // 0..w
+    const unsigned int j = blockIdx.y * blockDim.y + threadIdx.y; // 0..h
+    const uint i_local = threadIdx.x;
+    const uint j_local = threadIdx.y;
+     __shared__ float tile_a[GROUP_SIZE_X * GROUP_SIZE_Y];
+     __shared__ float tile_b[GROUP_SIZE_X * GROUP_SIZE_Y];
+    const uint tile_ix = threadIdx.y * GROUP_SIZE_Y + threadIdx.x;
+    const uint tile_stride = (k + GROUP_SIZE_X - 1) / GROUP_SIZE_X;
+
+    float acc = 0;
+    for (uint ti = 0; ti < tile_stride; ++ti) {
+        uint ki = ti*GROUP_SIZE_X + i_local;
+        uint kj = ti*GROUP_SIZE_Y + j_local;
+        tile_a[tile_ix] = a[j*k + ki];
+        tile_b[tile_ix] = b[kj*w + i];
+
+        __syncthreads();
+        for (uint t = 0; t < GROUP_SIZE_X; ++t) {
+            acc += tile_a[threadIdx.y * GROUP_SIZE_Y + t] * tile_b[t * GROUP_SIZE_Y + threadIdx.x];
+        }
+    }
+
+    c[j*w + i] = acc;
 }
 
 namespace cuda {
