@@ -117,8 +117,29 @@ void run(int argc, char** argv)
                         ocl_sum03LocalMemoryAtomicPerWorkgroup.exec(workSize, input_gpu, sum_accum_gpu, n);
                         sum_accum_gpu.readN(&gpu_sum, 1);
                     } else if (algorithm == "04 local reduction") {
-                        // TODO ocl_sum04LocalReduction.exec(...);
-                        throw std::runtime_error(CODE_IS_NOT_IMPLEMENTED);
+                        reduction_buffer1_gpu.fill(0);
+                        reduction_buffer2_gpu.fill(0);
+                        int shrink_factor = GROUP_SIZE * LOAD_K_VALUES_PER_ITEM;
+
+                        int i = 0;
+                        for (int curr_size = n; curr_size > 1; curr_size = (curr_size + shrink_factor - 1) / shrink_factor, i++) {
+                            int work_size = (curr_size + LOAD_K_VALUES_PER_ITEM - 1) / LOAD_K_VALUES_PER_ITEM;
+                            gpu::WorkSize workSize(GROUP_SIZE, work_size);
+                            // std::cout << "curr size " << curr_size << " work size " << work_size << std::endl;
+                            if (i == 0) {
+                                ocl_sum04LocalReduction.exec(workSize, input_gpu, reduction_buffer2_gpu, curr_size);
+                            } else if (i % 2 == 0) {
+                                ocl_sum04LocalReduction.exec(workSize, reduction_buffer1_gpu, reduction_buffer2_gpu, curr_size);
+                            } else {
+                                ocl_sum04LocalReduction.exec(workSize, reduction_buffer2_gpu, reduction_buffer1_gpu, curr_size);
+                            }
+                        }
+
+                        if (i % 2 == 0) {
+                            reduction_buffer1_gpu.readN(&gpu_sum, 1);
+                        } else {
+                            reduction_buffer2_gpu.readN(&gpu_sum, 1);
+                        }
                     } else {
                         rassert(false, 652345234321, algorithm, algorithm_index);
                     }
