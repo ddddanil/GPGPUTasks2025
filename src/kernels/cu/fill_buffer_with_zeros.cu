@@ -1,3 +1,6 @@
+#ifdef CLANGD
+#include <__clang_cuda_builtin_vars.h>
+#endif
 #include <libgpu/context.h>
 #include <libgpu/work_size.h>
 #include <libgpu/shared_device_buffer.h>
@@ -8,12 +11,13 @@
 #include "../defines.h"
 
 __global__ void fill_buffer_with_zeros(
-    // это лишь шаблон! смело меняйте аргументы и используемые буфера! можете сделать даже больше кернелов, если это вызовет затруднения - смело спрашивайте в чате
-    // НЕ ПОДСТРАИВАЙТЕСЬ ПОД СИСТЕМУ! СВЕРНИТЕ С РЕЛЬС!! БУНТ!!! АНТИХАЙП!11!!1
     unsigned int* buffer,
     unsigned int n)
 {
-    // TODO
+    const uint i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) {
+        buffer[i] = 0;
+    }
 }
 
 namespace cuda {

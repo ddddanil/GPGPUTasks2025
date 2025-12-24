@@ -8,14 +8,23 @@
 #include "../defines.h"
 
 __global__ void prefix_sum_02_prefix_accumulation(
-    // это лишь шаблон! смело меняйте аргументы и используемые буфера! можете сделать даже больше кернелов, если это вызовет затруднения - смело спрашивайте в чате
-    // НЕ ПОДСТРАИВАЙТЕСЬ ПОД СИСТЕМУ! СВЕРНИТЕ С РЕЛЬС!! БУНТ!!! АНТИХАЙП!11!!1
     const unsigned int* pow2_sum, // pow2_sum[i] = sum[i*2^pow2; 2*i*2^pow2)
           unsigned int* prefix_sum_accum, // we want to make it finally so that prefix_sum_accum[i] = sum[0, i]
     unsigned int n,
     unsigned int pow2)
 {
-    // TODO
+    const uint i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) {
+        return;
+    }
+    const uint ix = i + 1;
+    const uint curr_pow = 1 << pow2;
+    if (ix & curr_pow) {
+        // need to add this power
+        const uint sum_ix = (ix >> pow2) - 1;
+        // if (i >= 253) printf("elem %d(%d): add pow %d from ix %d val %d\n", i, ix, curr_pow, sum_ix, pow2_sum[sum_ix]);
+        prefix_sum_accum[i] += pow2_sum[sum_ix];
+    }
 }
 
 namespace cuda {

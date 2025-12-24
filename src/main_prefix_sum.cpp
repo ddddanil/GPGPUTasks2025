@@ -1,3 +1,5 @@
+#include <iomanip>
+#include <iostream>
 #include <libbase/stats.h>
 #include <libutils/misc.h>
 
@@ -7,6 +9,7 @@
 
 #include "kernels/defines.h"
 #include "kernels/kernels.h"
+#include "libgpu/work_size.h"
 
 #include <fstream>
 
@@ -42,6 +45,7 @@ void run(int argc, char** argv)
     avk2::KernelSource vk_prefix_accumulation(avk2::getPrefixSum02PrefixAccumulation());
 
     unsigned int n = 100*1000*1000;
+    // const unsigned int n = 257;
     std::vector<unsigned int> as(n, 0);
     size_t total_sum = 0;
     for (size_t i = 0; i < n; ++i) {
@@ -70,11 +74,60 @@ void run(int argc, char** argv)
             // ocl_sum_reduction.exec();
             // ocl_prefix_accumulation.exec();
         } else if (context.type() == gpu::Context::TypeCUDA) {
-            // TODO
-            throw std::runtime_error(CODE_IS_NOT_IMPLEMENTED);
-            // cuda::fill_buffer_with_zeros();
-            // cuda::prefix_sum_01_sum_reduction();
-            // cuda::prefix_sum_02_prefix_accumulation();
+            cuda::fill_buffer_with_zeros(gpu::WorkSize(GROUP_SIZE, n), prefix_sum_accum_gpu, n);
+            cuda::fill_buffer_with_zeros(gpu::WorkSize(GROUP_SIZE, n), buffer1_pow2_sum_gpu, n);
+            cuda::fill_buffer_with_zeros(gpu::WorkSize(GROUP_SIZE, n), buffer2_pow2_sum_gpu, n);
+
+            uint pow2 = 0;
+            // std::cout << "do pow " << pow2 << " size " << n << "->" << (n/2) << std::endl;
+            cuda::prefix_sum_02_prefix_accumulation(gpu::WorkSize(GROUP_SIZE, n), input_gpu, prefix_sum_accum_gpu, n, pow2);
+            cuda::prefix_sum_01_sum_reduction(gpu::WorkSize(GROUP_SIZE, n/2), input_gpu, buffer1_pow2_sum_gpu, n);
+            // {
+            //     std::cout << "input as: ";
+            //     for (int i = 0; i < n; ++i) std::cout << std::setw(3) << as[i] << " ";
+            //     std::cout << std::endl;
+            //     std::vector<unsigned int> gpu_prefix_sum = prefix_sum_accum_gpu.readVector();
+            //     std::cout << "curr sum: ";
+            //     for (int i = 0; i < n; ++i) std::cout << std::setw(3) << gpu_prefix_sum[i] << " ";
+            //     std::cout << std::endl;
+            //     std::vector<unsigned int> gpu_pow_sum = buffer1_pow2_sum_gpu.readVector();
+            //     std::cout << "curr pow: ";
+            //     for (int i = 0; i < n; ++i) std::cout << std::setw(3) << gpu_pow_sum[i] << " ";
+            //     std::cout << std::endl;
+            // }
+            
+            for (uint pow_n = (n + 1) / 2; pow_n > 1; pow_n = (pow_n + 1) / 2) {
+                pow2++;
+                uint next_pow_n = (pow_n + 1) / 2;
+                // std::cout << "do pow " << pow2 << " size " << pow_n << "->" << next_pow_n << std::endl;
+                if (pow2 & 1) {
+                    cuda::prefix_sum_02_prefix_accumulation(gpu::WorkSize(GROUP_SIZE, n), buffer1_pow2_sum_gpu, prefix_sum_accum_gpu, n, pow2);
+                    cuda::prefix_sum_01_sum_reduction(gpu::WorkSize(GROUP_SIZE, next_pow_n), buffer1_pow2_sum_gpu, buffer2_pow2_sum_gpu, pow_n);
+                    // {
+                    //     std::vector<unsigned int> gpu_prefix_sum = prefix_sum_accum_gpu.readVector();
+                    //     std::cout << "curr sum: ";
+                    //     for (int i = 0; i < n; ++i) std::cout << std::setw(3) << gpu_prefix_sum[i] << " ";
+                    //     std::cout << std::endl;
+                    //     std::vector<unsigned int> gpu_pow_sum = buffer2_pow2_sum_gpu.readVector();
+                    //     std::cout << "curr pow: ";
+                    //     for (int i = 0; i < n; ++i) std::cout << std::setw(3) << gpu_pow_sum[i] << " ";
+                    //     std::cout << std::endl;
+                    // }
+                } else {
+                    cuda::prefix_sum_02_prefix_accumulation(gpu::WorkSize(GROUP_SIZE, n), buffer2_pow2_sum_gpu, prefix_sum_accum_gpu, n, pow2);
+                    cuda::prefix_sum_01_sum_reduction(gpu::WorkSize(GROUP_SIZE, next_pow_n), buffer2_pow2_sum_gpu, buffer1_pow2_sum_gpu, pow_n);
+                    // {
+                    //     std::vector<unsigned int> gpu_prefix_sum = prefix_sum_accum_gpu.readVector();
+                    //     std::cout << "curr sum: ";
+                    //     for (int i = 0; i < n; ++i) std::cout << std::setw(3) << gpu_prefix_sum[i] << " ";
+                    //     std::cout << std::endl;
+                    //     std::vector<unsigned int> gpu_pow_sum = buffer1_pow2_sum_gpu.readVector();
+                    //     std::cout << "curr pow: ";
+                    //     for (int i = 0; i < n; ++i) std::cout << std::setw(3) << gpu_pow_sum[i] << " ";
+                    //     std::cout << std::endl;
+                    // }
+                }
+            }
         } else if (context.type() == gpu::Context::TypeVulkan) {
             // TODO
             throw std::runtime_error(CODE_IS_NOT_IMPLEMENTED);
@@ -95,6 +148,21 @@ void run(int argc, char** argv)
 
     // Считываем результат по PCI-E шине: GPU VRAM -> CPU RAM
     std::vector<unsigned int> gpu_prefix_sum = prefix_sum_accum_gpu.readVector();
+
+    // {
+    //     std::vector<unsigned int> gpu_prefix_sum = prefix_sum_accum_gpu.readVector();
+    //     std::cout << "result sum: ";
+    //     for (int i = 0; i < n; ++i) std::cout << std::setw(3) << gpu_prefix_sum[i] << " ";
+    //     std::cout << std::endl;
+    //     std::vector<unsigned int> gpu_pow_sum = buffer1_pow2_sum_gpu.readVector();
+    //     std::cout << "expected s: ";
+    //     size_t cpu_sum = 0;
+    //     for (int i = 0; i < n; ++i) {
+    //         cpu_sum += as[i];
+    //         std::cout << std::setw(3) << cpu_sum << " ";
+    //     }
+    //     std::cout << std::endl;
+    // }
 
     // Сверяем результат
     size_t cpu_sum = 0;
