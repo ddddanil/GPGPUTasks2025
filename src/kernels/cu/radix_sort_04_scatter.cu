@@ -8,25 +8,36 @@
 #include "../defines.h"
 
 __global__ void radix_sort_04_scatter(
-    // это лишь шаблон! смело меняйте аргументы и используемые буфера! можете сделать даже больше кернелов, если это вызовет затруднения - смело спрашивайте в чате
-    // НЕ ПОДСТРАИВАЙТЕСЬ ПОД СИСТЕМУ! СВЕРНИТЕ С РЕЛЬС!! БУНТ!!! АНТИХАЙП!11!!1
-    const unsigned int* buffer1,
-    const unsigned int* buffer2,
-          unsigned int* buffer3,
-    unsigned int a1,
-    unsigned int a2)
+    const unsigned int* input_values,
+    const unsigned int* value_idx,
+    const unsigned int* value_flag,
+          unsigned int* output,
+    unsigned int n,
+    unsigned int global_off)
 {
-    // TODO
+    const uint i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) {
+        return;
+    }
+    uint local_off = value_idx[i];
+    uint output_idx = local_off + global_off - 1;
+    uint flag = value_flag[i];
+    // if (i == 25) printf("elem %d: value=%d flag=%d ix=%d+%d=%d\n", i, input_values[i], flag, global_off, local_off, output_idx);
+    if (flag) {
+        // printf("elem %d: value=%d flag=%d ix=%d+%d=%d\n", i, input_values[i], flag, global_off, local_off, output_idx);
+        // rassert(output_idx != -1, 1418239198, i, output_idx);
+        output[output_idx] = input_values[i];
+    }
 }
 
 namespace cuda {
 void radix_sort_04_scatter(const gpu::WorkSize &workSize,
-    const gpu::gpu_mem_32u &buffer1, const gpu::gpu_mem_32u &buffer2, gpu::gpu_mem_32u &buffer3, unsigned int a1, unsigned int a2)
+    const gpu::gpu_mem_32u &input_values, const gpu::gpu_mem_32u &value_idx, const gpu::gpu_mem_32u &value_flag, gpu::gpu_mem_32u &output, unsigned int n, unsigned int global_off)
 {
     gpu::Context context;
     rassert(context.type() == gpu::Context::TypeCUDA, 34523543124312, context.type());
     cudaStream_t stream = context.cudaStream();
-    ::radix_sort_04_scatter<<<workSize.cuGridSize(), workSize.cuBlockSize(), 0, stream>>>(buffer1.cuptr(), buffer2.cuptr(), buffer3.cuptr(), a1, a2);
+    ::radix_sort_04_scatter<<<workSize.cuGridSize(), workSize.cuBlockSize(), 0, stream>>>(input_values.cuptr(), value_idx.cuptr(), value_flag.cuptr(), output.cuptr(), n, global_off);
     CUDA_CHECK_KERNEL(stream);
 }
 } // namespace cuda
