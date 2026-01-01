@@ -8,8 +8,11 @@
 
 #include "kernels/defines.h"
 #include "kernels/kernels.h"
+#include "libgpu/shared_device_buffer.h"
+#include "libgpu/work_size.h"
 
-#include <fstream>
+#include <iostream>
+#include <vector>
 
 void run(int argc, char** argv)
 {
@@ -40,9 +43,14 @@ void run(int argc, char** argv)
 
     FastRandom r;
 
-    int n = 100*1000*1000; // TODO при отладке используйте минимальное n (например n=5 или n=10) при котором воспроизводится бага
+    // int n = 100*1000*1000; // TODO при отладке используйте минимальное n (например n=5 или n=10) при котором воспроизводится бага
+    // int min_value = 1; // это сделано для упрощения, чтобы существовало очевидное -INFINITY значение
+    // int max_value = std::numeric_limits<int>::max() - 1; // TODO при отладке используйте минимальное max_value (например max_value=8) при котором воспроизводится бага
+
+    int n = 10; // TODO при отладке используйте минимальное n (например n=5 или n=10) при котором воспроизводится бага
     int min_value = 1; // это сделано для упрощения, чтобы существовало очевидное -INFINITY значение
-    int max_value = std::numeric_limits<int>::max() - 1; // TODO при отладке используйте минимальное max_value (например max_value=8) при котором воспроизводится бага
+    int max_value = 16; // TODO при отладке используйте минимальное max_value (например max_value=8) при котором воспроизводится бага
+
     std::vector<unsigned int> as(n, 0);
     std::vector<unsigned int> sorted(n, 0);
     for (size_t i = 0; i < n; ++i) {
@@ -79,6 +87,7 @@ void run(int argc, char** argv)
     // Аллоцируем буферы в VRAM
     gpu::gpu_mem_32u input_gpu(n);
     gpu::gpu_mem_32u buffer1_gpu(n), buffer2_gpu(n); // TODO это просто шаблонка, можете переименовать эти буферы, сделать другого размера/типа, удалить часть, добавить новые
+    gpu::gpu_mem_32u window_buffer((n / GROUP_SIZE) + 1);
     gpu::gpu_mem_32u buffer_output_gpu(n);
 
     // Прогружаем входные данные по PCI-E шине: CPU RAM -> GPU VRAM
@@ -92,7 +101,7 @@ void run(int argc, char** argv)
 
     // Запускаем кернел (несколько раз и с замером времени выполнения)
     std::vector<double> times;
-    for (int iter = 0; iter < 10; ++iter) { // TODO при отладке запускайте одну итерацию
+    for (int iter = 0; iter < 1; ++iter) { // TODO при отладке запускайте одну итерацию
         timer t;
 
         // Запускаем кернел, с указанием размера рабочего пространства и передачей всех аргументов
@@ -101,8 +110,23 @@ void run(int argc, char** argv)
             // TODO
             throw std::runtime_error(CODE_IS_NOT_IMPLEMENTED);
         } else if (context.type() == gpu::Context::TypeCUDA) {
-            // TODO
-            throw std::runtime_error(CODE_IS_NOT_IMPLEMENTED);
+            for(int sorted_k = 2; sorted_k < n; sorted_k *= 2) {
+                std::cout << "merge from " << (sorted_k / 2) << " to " << sorted_k << std::endl;
+                auto& from_gpu = (sorted_k == 2) ? input_gpu : (sorted_k % 4) ? buffer2_gpu : buffer1_gpu;
+                auto& to_gpu = (sorted_k % 4) ? buffer1_gpu : buffer2_gpu;
+
+                cuda::merge_sort_fine(gpu::WorkSize(GROUP_SIZE, n), from_gpu, to_gpu, window_buffer, sorted_k, n);
+                {
+                    std::vector<uint> from = from_gpu.readVector();
+                    std::cout << "from buf: ";
+                    for (int i = 0; i < n; ++i) std::cout << from[i] << " ";
+                    std::cout << std::endl;
+                    std::vector<uint> to = to_gpu.readVector();
+                    std::cout << "  to buf: ";
+                    for (int i = 0; i < n; ++i) std::cout << to[i] << " ";
+                    std::cout << std::endl;
+                }
+            }
         } else if (context.type() == gpu::Context::TypeVulkan) {
             // TODO
             throw std::runtime_error(CODE_IS_NOT_IMPLEMENTED);
