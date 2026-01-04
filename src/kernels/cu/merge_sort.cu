@@ -26,25 +26,37 @@ __device__ uint diag_choice(
     int w, int h,
     int diag, int i )
 {
-    uint l_idx, r_idx;
-    if (diag < h) {
-        uint o = i / 2;
-        l_idx = diag - o;
-        r_idx = o;
+    uint l_idx = UINT_MAX, r_idx = UINT_MAX;
+    uint pos = (i % 2) ^ (diag >= h);
+    uint o = i / 2;
+    if (pos) {
+        // check below
+        if (diag < h) {
+            l_idx = diag - o;
+            r_idx = o;
+        } else {
+            l_idx = h - o;
+            r_idx = (diag - h) + o;
+        }
     } else {
-        uint o = (i - 1) / 2;
-        l_idx = h - o - 1;
-        r_idx = (o + 1) + (diag - h);
+        // check left
+        if (diag < h) {
+            l_idx = diag - o;
+            r_idx = o;
+        } else {
+            l_idx = h - o - 1;
+            r_idx = (diag - h) + o;
+        }
     }
-    if (l_idx == h) {
-        l_idx--;
-    }
-    if (r_idx == w) {
-        r_idx--;
-    }
-    auto res_ix = (i % 2) ^ (diag >= h);
-    auto res = (res_ix) ? input_r[r_idx] : input_l[l_idx];
-    printf(" choice diag %d:%d ix=%d; (%3d)[%3d] (%3d)[%3d] => %d\n", diag, i, res_ix, input_l[l_idx], l_idx, input_r[r_idx], r_idx, res);
+    // if (l_idx == h) {
+    //     l_idx--;
+    // }
+    // if (r_idx == w) {
+    //     r_idx--;
+    // }
+    // printf(" choice diag %d:%d pos:o=%d:%d r=%d; [%3d] [%3d]\n", diag, i, pos, o, (diag >= h), l_idx, r_idx);
+    auto res = (pos) ? input_r[r_idx] : input_l[l_idx];
+    // printf(" choice diag %d:%d ix=%d; (%3d)[%3d] (%3d)[%3d] => %d\n", diag, i, pos, input_l[l_idx], l_idx, input_r[r_idx], r_idx, res);
 
     return res;
 }
@@ -82,9 +94,9 @@ __device__ bool diag_pred(
         }
     }
 
-    printf(" pred: diag=%d:%d cmp [%3d] <=> [%3d]\n", diag, i, l_idx, r_idx);
+    // printf(" pred: diag=%d:%d cmp [%3d] <=> [%3d]\n", diag, i, l_idx, r_idx);
     auto [l_val, r_val] = std::pair{input_l[l_idx], input_r[r_idx]};
-    printf(" pred: diag=%d:%d cmp (%3d) <=> (%3d)\n", diag, i, l_val, r_val);
+    // printf(" pred: diag=%d:%d cmp (%3d) <=> (%3d)\n", diag, i, l_val, r_val);
     auto pred = l_val <= r_val;
     return pred;
 }
@@ -98,20 +110,10 @@ __device__ uint bin_search_diag(
 {
     while (l < r - 1) {
         int m = (l + r) / 2;
-        printf("   binsrch: diag=%d l=%d r=%d m=%d\n", diag_n, l, r, m);
+        // printf("   binsrch: diag=%d l=%d r=%d m=%d\n", diag_n, l, r, m);
 
-        // auto [l_i, r_i] = input_idx(w, h, diag_n, m);
-        // if (l_i == h) {
-        //     l_i--;
-        // }
-        // if (r_i == w) {
-        //     r_i--;
-        // }
-        // printf("   binsrch: diag=%d cmp [%3d] <=> [%3d]\n", diag_n, l_i, r_i);
-        // auto [l_val, r_val] = std::pair{input_l[l_i], input_r[r_i]};
-        // printf("   binsrch: diag=%d cmp (%3d) <=> (%3d)\n", diag_n, l_val, r_val);
         auto pred = diag_pred(input_l, input_r, w, h, diag_n, m);
-        printf("   binsrch: diag=%d pred %d\n", diag_n, int(pred));
+        // printf("   binsrch: diag=%d pred %d\n", diag_n, int(pred));
 
         if (pred) {
             r = m;
@@ -172,7 +174,7 @@ __global__ void merge_sort_fine(
     const int block_ix = i / sorted_k;
     const int block_off = i % sorted_k;
     auto h = sorted_k / 2, w = min((n - (block_ix * sorted_k)) - h, h);
-    printf("block %d:%d hw %dx%d\n", block_ix, block_off, h, w);
+    // printf("block %d:%d hw %dx%d\n", block_ix, block_off, h, w);
     if (w <= 0) {
         output_data[i] = input_data[i];
         return;
@@ -182,9 +184,9 @@ __global__ void merge_sort_fine(
     auto input_r = input_l + h;
     auto diag_w = diag_width(w, h, block_off);
 
-    printf("pos %d: block %d:%d sorted=%d diag_w=%d\n", i, block_ix, block_off, sorted_k, diag_w);
-    printf("pos %d: input_l=[%d, %d, ..] off=%ld\n", i, input_l[0], input_l[1], (input_l - input_data));
-    printf("pos %d: input_r=[%d, %d, ..] off=%ld\n", i, input_r[0], input_r[1], (input_r - input_data));
+    // printf("pos %d: block %d:%d sorted=%d diag_w=%d\n", i, block_ix, block_off, sorted_k, diag_w);
+    // printf("pos %d: input_l=[%d, %d, ..] off=%ld\n", i, input_l[0], input_l[1], (input_l - input_data));
+    // printf("pos %d: input_r=[%d, %d, ..] off=%ld\n", i, input_r[0], input_r[1], (input_r - input_data));
 
     auto res_diag = bin_search_diag(
         input_l, input_r,
