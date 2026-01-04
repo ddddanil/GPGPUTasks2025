@@ -47,9 +47,9 @@ void run(int argc, char** argv)
     // int min_value = 1; // это сделано для упрощения, чтобы существовало очевидное -INFINITY значение
     // int max_value = std::numeric_limits<int>::max() - 1; // TODO при отладке используйте минимальное max_value (например max_value=8) при котором воспроизводится бага
 
-    int n = 10; // TODO при отладке используйте минимальное n (например n=5 или n=10) при котором воспроизводится бага
+    int n = 32; // TODO при отладке используйте минимальное n (например n=5 или n=10) при котором воспроизводится бага
     int min_value = 1; // это сделано для упрощения, чтобы существовало очевидное -INFINITY значение
-    int max_value = 16; // TODO при отладке используйте минимальное max_value (например max_value=8) при котором воспроизводится бага
+    int max_value = 128; // TODO при отладке используйте минимальное max_value (например max_value=8) при котором воспроизводится бага
 
     std::vector<unsigned int> as(n, 0);
     std::vector<unsigned int> sorted(n, 0);
@@ -110,10 +110,10 @@ void run(int argc, char** argv)
             // TODO
             throw std::runtime_error(CODE_IS_NOT_IMPLEMENTED);
         } else if (context.type() == gpu::Context::TypeCUDA) {
-            for(int sorted_k = 2; sorted_k < n; sorted_k *= 2) {
+            for(int k = 1, sorted_k = 2; sorted_k/2 < n; k++, sorted_k *= 2) {
                 std::cout << "merge from " << (sorted_k / 2) << " to " << sorted_k << std::endl;
-                auto& from_gpu = (sorted_k == 2) ? input_gpu : (sorted_k % 4) ? buffer2_gpu : buffer1_gpu;
-                auto& to_gpu = (sorted_k % 4) ? buffer1_gpu : buffer2_gpu;
+                auto& from_gpu = (k == 1) ? input_gpu : (k % 2) ? buffer2_gpu : buffer1_gpu;
+                auto& to_gpu = (sorted_k >= n) ? buffer_output_gpu : (k % 2) ? buffer1_gpu : buffer2_gpu;
 
                 cuda::merge_sort_fine(gpu::WorkSize(GROUP_SIZE, n), from_gpu, to_gpu, window_buffer, sorted_k, n);
                 {
@@ -144,6 +144,15 @@ void run(int argc, char** argv)
 
     // Считываем результат по PCI-E шине: GPU VRAM -> CPU RAM
     std::vector<unsigned int> gpu_sorted = buffer_output_gpu.readVector();
+
+    {
+        std::cout << "from cpu: ";
+        for (int i = 0; i < n; ++i) std::cout << sorted[i] << " ";
+        std::cout << std::endl;
+        std::cout << "from gpu: ";
+        for (int i = 0; i < n; ++i) std::cout << gpu_sorted[i] << " ";
+        std::cout << std::endl;
+    }
 
     // Сверяем результат
     for (size_t i = 0; i < n; ++i) {
