@@ -48,12 +48,6 @@ __device__ uint diag_choice(
             r_idx = (diag - h) + o;
         }
     }
-    // if (l_idx == h) {
-    //     l_idx--;
-    // }
-    // if (r_idx == w) {
-    //     r_idx--;
-    // }
     // printf(" choice diag %d:%d pos:o=%d:%d r=%d; [%3d] [%3d]\n", diag, i, pos, o, (diag >= h), l_idx, r_idx);
     auto res = (pos) ? input_r[r_idx] : input_l[l_idx];
     // printf(" choice diag %d:%d ix=%d; (%3d)[%3d] (%3d)[%3d] => %d\n", diag, i, pos, input_l[l_idx], l_idx, input_r[r_idx], r_idx, res);
@@ -95,7 +89,8 @@ __device__ bool diag_pred(
     }
 
     // printf(" pred: diag=%d:%d cmp [%3d] <=> [%3d]\n", diag, i, l_idx, r_idx);
-    auto [l_val, r_val] = std::pair{input_l[l_idx], input_r[r_idx]};
+    auto l_val = input_l[l_idx];
+    auto r_val = input_r[r_idx];
     // printf(" pred: diag=%d:%d cmp (%3d) <=> (%3d)\n", diag, i, l_val, r_val);
     auto pred = l_val <= r_val;
     return pred;
@@ -125,37 +120,7 @@ __device__ uint bin_search_diag(
     return l;
 }
 
-// __global__ void merge_sort_coarse(
-//     uint const* input_data, // [0..n/2]+[n/2..n] two halves
-//     uint      * output_data, // [0..n] output
-//     uint      * output_windows, // [0..t] window output
-//      int        sorted_k,
-//      int        n)
-// {
-//     const int t = blockIdx.x * blockDim.x + threadIdx.x; // long indexing
-//     const int i = GROUP_SIZE * t; // output index
-
-//     const int start_l = 2*t;
-//     const int start_r = 2*t+1;
-//     const int end_l = 2*t+2;
-//     const int end_r = 2*t+3;
-
-//     if (t == 0) { // fill start
-//         output_windows[start_l] = 0;
-//         output_windows[start_r] = 0;
-//     }
-
-//     auto input_l = input_data;
-//     auto input_r = input_data + (n / 2);
-
-//     auto [res_l, res_r] = bin_search_diag(input_l, input_r, n, i, 0, n);
-
-//     output_windows[end_l] = res_l;
-//     output_windows[end_r] = res_r;
-//     output_data = input_l[res_l];
-// }
-
-__global__ void merge_sort_fine(
+__global__ void merge_sort(
     uint const* input_data, // [0..n/2]+[n/2..n] two halves
     uint      * output_data, // [0..n] output
     uint const* input_windows, // [0..t] window output
@@ -164,12 +129,6 @@ __global__ void merge_sort_fine(
 {
     const int i = blockIdx.x * blockDim.x + threadIdx.x; // array ix
     if (i >= n) return;
-    // const int t = blockIdx.x; // window ix
-
-    // const int start_l = 2*t;
-    // const int start_r = 2*t+1;
-    // const int end_l = 2*t+2;
-    // const int end_r = 2*t+3;
 
     const int block_ix = i / sorted_k;
     const int block_off = i % sorted_k;
@@ -199,23 +158,13 @@ __global__ void merge_sort_fine(
 }
 
 namespace cuda {
-// void merge_sort_coarse(const gpu::WorkSize &workSize,
-//             const gpu::gpu_mem_32u &input_data, gpu::gpu_mem_32u &output_data, gpu::gpu_mem_32u &output_windows, int sorted_k, int n)
-// {
-//     gpu::Context context;
-//     rassert(context.type() == gpu::Context::TypeCUDA, 34523543124312, context.type());
-//     cudaStream_t stream = context.cudaStream();
-//     ::merge_sort_coarse<<<workSize.cuGridSize(), workSize.cuBlockSize(), 0, stream>>>(input_data.cuptr(), output_data.cuptr(), output_windows.cuptr(), sorted_k, n);
-//     CUDA_CHECK_KERNEL(stream);
-// }
-
-void merge_sort_fine(const gpu::WorkSize &workSize,
+void merge_sort(const gpu::WorkSize &workSize,
             gpu::gpu_mem_32u const& input_data, gpu::gpu_mem_32u & output_data, gpu::gpu_mem_32u const& input_windows, int sorted_k, int n)
 {
     gpu::Context context;
     rassert(context.type() == gpu::Context::TypeCUDA, 34523543124312, context.type());
     cudaStream_t stream = context.cudaStream();
-    ::merge_sort_fine<<<workSize.cuGridSize(), workSize.cuBlockSize(), 0, stream>>>(input_data.cuptr(), output_data.cuptr(), input_windows.cuptr(), sorted_k, n);
+    ::merge_sort<<<workSize.cuGridSize(), workSize.cuBlockSize(), 0, stream>>>(input_data.cuptr(), output_data.cuptr(), input_windows.cuptr(), sorted_k, n);
     CUDA_CHECK_KERNEL(stream);
 }
 } // namespace cuda

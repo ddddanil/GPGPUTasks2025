@@ -116,7 +116,7 @@ void run(int argc, char** argv)
                 auto& from_gpu = (k == 1) ? input_gpu : (k % 2) ? buffer2_gpu : buffer1_gpu;
                 auto& to_gpu = (sorted_k >= n) ? buffer_output_gpu : (k % 2) ? buffer1_gpu : buffer2_gpu;
 
-                cuda::merge_sort_fine(gpu::WorkSize(GROUP_SIZE, n), from_gpu, to_gpu, window_buffer, sorted_k, n);
+                cuda::merge_sort(gpu::WorkSize(GROUP_SIZE, n), from_gpu, to_gpu, window_buffer, sorted_k, n);
                 // {
                 //     std::vector<uint> from = from_gpu.readVector();
                 //     std::cout << "from buf: ";
